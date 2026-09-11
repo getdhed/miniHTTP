@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
 )
+
+const readHeaderTimeout = 3 * time.Second
 
 type Server struct {
 	httpServer *http.Server
@@ -20,8 +23,9 @@ func NewServer(addr string) *Server {
 		mux: mux,
 	}
 	s.httpServer = &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           testMiddleware(mux),
+		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
 	return s
@@ -37,7 +41,16 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	return nil
 }
+func testMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
+		fmt.Println("before")
+
+		next.ServeHTTP(w, r)
+
+		fmt.Println("after")
+	})
+}
 func (s *Server) routes() {
 	s.mux.HandleFunc("/health", myHandler)
 }
@@ -49,7 +62,12 @@ func main() {
 	defer stop()
 	go func() {
 		if err := server.Start(); err != nil {
-			fmt.Println(err)
+			if errors.Is(err, http.ErrServerClosed) {
+				fmt.Println("Сервер закрылся!")
+			} else {
+				fmt.Println("Неожиданная ошибка", err)
+			}
+
 		}
 	}()
 
