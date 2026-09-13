@@ -24,7 +24,7 @@ func NewServer(addr string) *Server {
 	}
 	s.httpServer = &http.Server{
 		Addr:              addr,
-		Handler:           logMiddleware(mux),
+		Handler:           logMiddleware(recoverMiddleware(mux)),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
@@ -44,12 +44,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func logMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wr := &responseWriter{
+			ResponseWriter: w,
+		}
 		start := time.Now()
+		defer func() {
+			duration := time.Since(start)
+			fmt.Println(r.Method, r.URL.Path, wr.status, wr.bytes, duration)
 
-		next.ServeHTTP(w, r)
+		}()
 
-		duration := time.Since(start)
-		fmt.Println(r.Method, r.URL, duration)
+		next.ServeHTTP(wr, r)
+
 	})
 }
 
@@ -66,6 +72,20 @@ func testMiddleware(next http.Handler) http.Handler {
 func (s *Server) routes() {
 	s.mux.HandleFunc("/health", myHandler)
 }
+
+func recoverMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if v := recover(); v != nil {
+				fmt.Println("panic:", v)
+				http.Error(w, "Internal server error", 500)
+			}
+		}()
+		next.ServeHTTP(w, r)
+
+	})
+}
+
 func main() {
 	ctx := context.Background()
 	server := NewServer(":3030")
