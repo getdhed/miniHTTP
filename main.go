@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const readHeaderTimeout = 3 * time.Second
@@ -27,6 +30,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/health", myHandler)
 	s.mux.HandleFunc("GET /success", successHandler)
 	s.mux.HandleFunc("GET /error", errorHandler)
+	s.mux.HandleFunc("/auth/login", loginHandler)
 }
 
 func main() {
@@ -45,6 +49,25 @@ func main() {
 
 		}
 	}()
+
+	password := "qwerty123"
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		log.Fatal(err)
+	}
+	hash2, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(string(hash))
+	err = bcrypt.CompareHashAndPassword(hash, []byte("qwerty123"))
+	fmt.Println(err)
+
+	err = bcrypt.CompareHashAndPassword(hash, []byte("qwerty124"))
+	fmt.Println(err)
+	fmt.Println(string(hash2) == string(hash))
 
 	<-shutdownCtx.Done()
 	fmt.Println("Ctrl+C received")

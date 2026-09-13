@@ -22,6 +22,22 @@ type Server struct {
 	mux        *http.ServeMux
 }
 
+type User struct {
+	ID           int
+	Email        string
+	PasswordHash string `json:"-"`
+}
+type loginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type loginResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int    `json:"expires_in"`
+}
+
 func NewServer(addr string) *Server {
 	mux := http.NewServeMux()
 	s := &Server{

@@ -32,3 +32,7 @@ func errorHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+
+}
