@@ -1,6 +1,8 @@
 package main
 
-import "net/http"
+import (
+	"net/http"
+)
 
 type responseWriter struct {
 	http.ResponseWriter
@@ -10,23 +12,26 @@ type responseWriter struct {
 	bytes       int
 }
 
-func (rw *responseWriter) WriteHeader(code int) {
-	if rw.wroteHeader {
-		return
-	}
-	rw.status = code
-	rw.wroteHeader = true
-	rw.ResponseWriter.WriteHeader(rw.status)
+type errorResponse struct {
+	Error   string `json:"error"`
+	Message string `json:"message"`
 }
 
-func (rw *responseWriter) Write(data []byte) (int, error) {
-	if !rw.wroteHeader {
-		rw.WriteHeader(http.StatusOK)
+type Server struct {
+	httpServer *http.Server
+	mux        *http.ServeMux
+}
+
+func NewServer(addr string) *Server {
+	mux := http.NewServeMux()
+	s := &Server{
+		mux: mux,
+	}
+	s.httpServer = &http.Server{
+		Addr:              addr,
+		Handler:           logMiddleware(recoverMiddleware(mux)),
+		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
-	n, err := rw.ResponseWriter.Write(data)
-
-	rw.bytes += n
-
-	return n, err
+	return s
 }
