@@ -24,7 +24,7 @@ func NewServer(addr string) *Server {
 	}
 	s.httpServer = &http.Server{
 		Addr:              addr,
-		Handler:           testMiddleware(mux),
+		Handler:           logMiddleware(mux),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
@@ -41,6 +41,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	return nil
 }
+
+func logMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		next.ServeHTTP(w, r)
+
+		duration := time.Since(start)
+		fmt.Println(r.Method, r.URL, duration)
+	})
+}
+
 func testMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
