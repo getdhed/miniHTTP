@@ -13,6 +13,10 @@ import (
 	"github.com/joho/godotenv"
 )
 
+type contextKey string
+
+const userIDKey contextKey = "userID"
+
 const readHeaderTimeout = 3 * time.Second
 
 func (s *Server) Start() error {

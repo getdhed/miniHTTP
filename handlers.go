@@ -89,5 +89,12 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) meHandler(w http.ResponseWriter, r *http.Request) {
-
+	userID, ok := r.Context().Value(userIDKey).(int)
+	if !ok {
+		if err := writeError(w, http.StatusInternalServerError, "internal error", "internal error"); err != nil {
+			fmt.Println("Ошибка:", err)
+		}
+		return
+	}
+	fmt.Println("user ID:", userID)
 }

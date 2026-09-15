@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -59,6 +60,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		tokenString, err := extractBearerToken(r)
 		if err != nil {
 			fmt.Println("ошибка", err)
+			w.Header().Set("WWW-Authenticate", "Bearer")
 			if err := writeJSON(w, http.StatusUnauthorized, "invalid data"); err != nil {
 				fmt.Println("ошибка", err)
 			}
@@ -67,13 +69,14 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		userID, err := s.parseAccessToken(tokenString)
 		if err != nil {
 			fmt.Println("ошибка", err)
+			w.Header().Set("WWW-Authenticate", "Bearer")
 			if err := writeJSON(w, http.StatusUnauthorized, "invalid data"); err != nil {
 				fmt.Println("ошибка", err)
 			}
 			return
 		}
-		fmt.Println("authenticated user:", userID)
-		next.ServeHTTP(w, r)
+		ctx := context.WithValue(r.Context(), userIDKey, userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 
 	})
 }

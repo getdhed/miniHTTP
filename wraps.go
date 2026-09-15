@@ -91,14 +91,15 @@ func (s *Server) parseAccessToken(tokenString string) (int, error) {
 	}
 	return userID, nil
 }
+
 func extractBearerToken(r *http.Request) (string, error) {
 	authHeader := r.Header.Get("Authorization")
 	parts := strings.Fields(authHeader)
 	if len(parts) != 2 {
-		return "", fmt.Errorf("Неправильный bearer")
+		return "", fmt.Errorf("invalid authorization header")
 	}
 	if !strings.EqualFold(parts[0], "Bearer") {
-		return "", fmt.Errorf("Неправильный bearer")
+		return "", fmt.Errorf("invalid authorization header")
 	}
 	return parts[1], nil
 }
