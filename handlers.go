@@ -83,7 +83,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		TokenType:   "bearer",
 		ExpiresIn:   3600,
 	}
-	if err := writeJSON(w, 200, user); err != nil {
+	if err := writeJSON(w, 200, loginResponse); err != nil {
 		fmt.Println("Произошла ошибка", loginResponse)
 	}
 }
