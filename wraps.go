@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -68,4 +70,35 @@ func (s *Server) generateAccessToken(user User) (string, error) {
 	}
 	return tokenString, nil
 
+}
+
+func (s *Server) parseAccessToken(tokenString string) (int, error) {
+	claims := &jwt.RegisteredClaims{}
+	if _, err := jwt.ParseWithClaims(
+		tokenString,
+		claims,
+		func(token *jwt.Token) (any, error) {
+			return s.jwtConfig.Secret, nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer("miniHTTP"),
+		jwt.WithExpirationRequired()); err != nil {
+		return 0, err
+	}
+	userID, err := strconv.Atoi(claims.Subject)
+	if err != nil {
+		return 0, err
+	}
+	return userID, nil
+}
+func extractBearerToken(r *http.Request) (string, error) {
+	authHeader := r.Header.Get("Authorization")
+	parts := strings.Fields(authHeader)
+	if len(parts) != 2 {
+		return "", fmt.Errorf("Неправильный bearer")
+	}
+	if !strings.EqualFold(parts[0], "Bearer") {
+		return "", fmt.Errorf("Неправильный bearer")
+	}
+	return parts[1], nil
 }

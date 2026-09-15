@@ -80,10 +80,14 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	loginResponse := loginResponse{
 		AccessToken: token,
-		TokenType:   "bearer",
+		TokenType:   "Bearer",
 		ExpiresIn:   3600,
 	}
 	if err := writeJSON(w, 200, loginResponse); err != nil {
 		fmt.Println("Произошла ошибка", loginResponse)
 	}
+}
+
+func (s *Server) meHandler(w http.ResponseWriter, r *http.Request) {
+
 }

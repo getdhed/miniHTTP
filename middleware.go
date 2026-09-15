@@ -53,13 +53,27 @@ func recoverMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func authMiddleware(next http.Handler) http.Handler {
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		fmt.Println("before")
-
+		tokenString, err := extractBearerToken(r)
+		if err != nil {
+			fmt.Println("ошибка", err)
+			if err := writeJSON(w, http.StatusUnauthorized, "invalid data"); err != nil {
+				fmt.Println("ошибка", err)
+			}
+			return
+		}
+		userID, err := s.parseAccessToken(tokenString)
+		if err != nil {
+			fmt.Println("ошибка", err)
+			if err := writeJSON(w, http.StatusUnauthorized, "invalid data"); err != nil {
+				fmt.Println("ошибка", err)
+			}
+			return
+		}
+		fmt.Println("authenticated user:", userID)
 		next.ServeHTTP(w, r)
 
-		fmt.Println("after")
 	})
 }
