@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 const readHeaderTimeout = 3 * time.Second
@@ -31,8 +34,15 @@ func (s *Server) routes() {
 }
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("failed to load .env")
+	}
+	jwtSecret, ok := os.LookupEnv("JWT_SECRET")
+	if !ok || jwtSecret == "" {
+		log.Fatal("JWT_SECRET is not set")
+	}
 	ctx := context.Background()
-	server := NewServer(":3030")
+	server := NewServer(":3030", []byte(jwtSecret))
 	server.routes()
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()

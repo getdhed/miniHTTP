@@ -74,7 +74,16 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if err := writeJSON(w, 200, user); err != nil {
+	token, err := s.generateAccessToken(user)
+	if err != nil {
 		fmt.Println("Произошла ошибка", err)
+	}
+	loginResponse := loginResponse{
+		AccessToken: token,
+		TokenType:   "bearer",
+		ExpiresIn:   3600,
+	}
+	if err := writeJSON(w, 200, user); err != nil {
+		fmt.Println("Произошла ошибка", loginResponse)
 	}
 }

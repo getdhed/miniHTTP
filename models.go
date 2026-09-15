@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -23,8 +24,12 @@ type Server struct {
 	httpServer *http.Server
 	mux        *http.ServeMux
 	userStore  *UserStore
+	jwtConfig  JWTConfig
 }
-
+type JWTConfig struct {
+	Secret []byte
+	TTL    time.Duration
+}
 type User struct {
 	ID           int
 	Email        string
@@ -69,9 +74,13 @@ func (us *UserStore) FindByEmail(email string) (User, bool) {
 	return user, ok
 }
 
-func NewServer(addr string) *Server {
+func NewServer(addr string, jwtSecret []byte) *Server {
 	mux := http.NewServeMux()
-
+	TTL := time.Hour
+	jwtConfig := JWTConfig{
+		Secret: jwtSecret,
+		TTL:    TTL,
+	}
 	userStore, err := NewUserStore()
 	if err != nil {
 		return nil
@@ -80,6 +89,7 @@ func NewServer(addr string) *Server {
 	s := &Server{
 		mux:       mux,
 		userStore: userStore,
+		jwtConfig: jwtConfig,
 	}
 	s.httpServer = &http.Server{
 		Addr:              addr,

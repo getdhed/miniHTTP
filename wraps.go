@@ -3,6 +3,10 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func writeError(w http.ResponseWriter, status int, code string, message string) error {
@@ -47,4 +51,21 @@ func writeJSON(w http.ResponseWriter, status int, data any) error {
 	}
 
 	return nil
+}
+func (s *Server) generateAccessToken(user User) (string, error) {
+	now := time.Now()
+
+	claims := jwt.RegisteredClaims{
+		Subject:   strconv.Itoa(user.ID),
+		Issuer:    "miniHTTP",
+		IssuedAt:  jwt.NewNumericDate(now),
+		ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(s.jwtConfig.Secret)
+	if err != nil {
+		return "", err
+	}
+	return tokenString, nil
+
 }
