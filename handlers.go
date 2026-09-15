@@ -97,4 +97,10 @@ func (s *Server) meHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Println("user ID:", userID)
+	user := User{
+		ID: userID,
+	}
+	if err := writeJSON(w, http.StatusOK, user); err != nil {
+		fmt.Println("Ошибка:", err)
+	}
 }

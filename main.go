@@ -49,7 +49,19 @@ func main() {
 	if !ok || jwtSecret == "" {
 		log.Fatal("JWT_SECRET is not set")
 	}
+	databaseUrl, ok := os.LookupEnv("DATABASE_URL")
+	if !ok || databaseUrl == "" {
+		log.Fatal("DATABASE_URL is not set")
+	}
 	ctx := context.Background()
+
+	pool, err := connectDB(ctx, databaseUrl)
+	if err != nil {
+		fmt.Println("База данных не подключена...")
+		return
+	}
+	defer pool.Close()
+
 	server := NewServer(":3030", []byte(jwtSecret))
 	server.routes()
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
