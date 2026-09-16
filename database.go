@@ -29,6 +29,7 @@ func (r *UserRepository) findByEmail(ctx context.Context, email string) (User, e
 	user := User{Email: email}
 	if err := row.Scan(
 		&user.ID,
+		&user.Name,
 		&user.PasswordHash,
 	); err != nil {
 		return User{}, err
@@ -40,7 +41,7 @@ func (r *UserRepository) AddUser(ctx context.Context, user User) (User, error) {
 	row := r.db.QueryRow(
 		ctx,
 		`INSERT INTO users (name,email,password_hash)
-		VALUES($1,$2)
+		VALUES($1,$2,$3)
 		RETURNING id,name,email,password_hash,created_at;`,
 		user.Name,
 		user.Email,
