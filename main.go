@@ -61,8 +61,8 @@ func main() {
 		return
 	}
 	defer pool.Close()
-
-	server := NewServer(":3030", []byte(jwtSecret))
+	userRepo := NewUserRepository(pool)
+	server := NewServer(":3030", []byte(jwtSecret), userRepo)
 	server.routes()
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type responseWriter struct {
@@ -23,17 +23,28 @@ type errorResponse struct {
 type Server struct {
 	httpServer *http.Server
 	mux        *http.ServeMux
-	userStore  *UserStore
 	jwtConfig  JWTConfig
+	users      *UserRepository
+}
+type UserRepository struct {
+	db *pgxpool.Pool
 }
 type JWTConfig struct {
 	Secret []byte
 	TTL    time.Duration
 }
+
+type RegisterRequest struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
 type User struct {
 	ID           int
 	Email        string
 	PasswordHash string `json:"-"`
+	Name         string
+	CreatedAt    time.Time
 }
 type loginRequest struct {
 	Email    string `json:"email"`
@@ -45,51 +56,45 @@ type loginResponse struct {
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int    `json:"expires_in"`
 }
-type UserStore struct {
-	users map[string]User
-}
 
-func NewUserStore() (*UserStore, error) {
-	us := UserStore{
-		users: make(map[string]User),
-	}
+// type UserStore struct {
+// 	users map[string]User
+// }
 
-	hash, err := bcrypt.GenerateFromPassword([]byte("qwerty123"), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, err
-	}
+// func NewUserStore() (*UserStore, error) {
+// 	us := UserStore{
+// 		users: make(map[string]User),
+// 	}
+// 	hash, err := bcrypt.GenerateFromPassword([]byte("qwerty123"), bcrypt.DefaultCost)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	testUser := User{
+// 		ID:           1,
+// 		Email:        "testmail",
+// 		PasswordHash: string(hash),
+// 	}
+// 	us.users["testmail"] = testUser
+// 	return &us, nil
+// }
 
-	testUser := User{
-		ID:           1,
-		Email:        "testmail",
-		PasswordHash: string(hash),
-	}
+// func (us *UserStore) FindByEmail(email string) (User, bool) {
+// 	user, ok := us.users[email]
+// 	return user, ok
+// }
 
-	us.users["testmail"] = testUser
-	return &us, nil
-}
-
-func (us *UserStore) FindByEmail(email string) (User, bool) {
-	user, ok := us.users[email]
-	return user, ok
-}
-
-func NewServer(addr string, jwtSecret []byte) *Server {
+func NewServer(addr string, jwtSecret []byte, users *UserRepository) *Server {
 	mux := http.NewServeMux()
 	TTL := time.Hour
 	jwtConfig := JWTConfig{
 		Secret: jwtSecret,
 		TTL:    TTL,
 	}
-	userStore, err := NewUserStore()
-	if err != nil {
-		return nil
-	}
 
 	s := &Server{
 		mux:       mux,
-		userStore: userStore,
 		jwtConfig: jwtConfig,
+		users:     users,
 	}
 	s.httpServer = &http.Server{
 		Addr:              addr,
@@ -98,4 +103,11 @@ func NewServer(addr string, jwtSecret []byte) *Server {
 	}
 
 	return s
+}
+
+func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
+	ur := UserRepository{
+		db: pool,
+	}
+	return &ur
 }
