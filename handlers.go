@@ -81,6 +81,7 @@ func (s *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := User{
+		Name:         req.Name,
 		Email:        req.Email,
 		PasswordHash: string(passwordHash),
 	}
