@@ -45,7 +45,7 @@ func (s *SessionStore) Create(ctx context.Context, refreshHash string, session S
 	if err != nil {
 		return err
 	}
-	if s.client.Set(ctx, key, data, ttl).Err(); err != nil {
+	if err := s.client.Set(ctx, key, data, ttl).Err(); err != nil {
 		return err
 	}
 	return nil
