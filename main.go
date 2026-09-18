@@ -63,8 +63,23 @@ func main() {
 		return
 	}
 	defer pool.Close()
+
+	redisAddr, ok := os.LookupEnv("REDIS_ADDR")
+	if !ok || redisAddr == "" {
+		fmt.Println("редис не подключен...")
+		return
+	}
+	redisClient, err := connectRedis(ctx, redisAddr)
+	if err != nil {
+		fmt.Println("Redis connection failed:", err)
+		return
+	}
+	defer redisClient.Close()
+
+	sessions := NewSessionStore(redisClient)
 	userRepo := NewUserRepository(pool)
-	server := NewServer(":3030", []byte(jwtSecret), userRepo)
+
+	server := NewServer(":3030", []byte(jwtSecret), userRepo, sessions)
 	server.routes()
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()

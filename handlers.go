@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -170,6 +171,41 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		TokenType:   "Bearer",
 		ExpiresIn:   3600,
 	}
+	refreshToken, err := generateRefreshToken()
+	if err != nil {
+		if err := writeError(
+			w,
+			http.StatusInternalServerError,
+			"internal error",
+			"failed to generate refresh token",
+		); err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+	refreshHash := hashRefreshToken(refreshToken)
+	session := Session{
+		UserID: user.ID,
+	}
+
+	const refreshesTTL = 7 * 24 * time.Hour
+
+	if err := s.sessions.Create(
+		r.Context(),
+		refreshHash,
+		session,
+		refreshesTTL); err != nil {
+		if err := writeError(
+			w,
+			http.StatusInternalServerError,
+			"internal error",
+			"failed to create session",
+		); err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+
 	if err := writeJSON(w, 200, loginResponse); err != nil {
 		fmt.Println("Произошла ошибка", loginResponse)
 	}

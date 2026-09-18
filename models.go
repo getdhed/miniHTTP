@@ -25,6 +25,7 @@ type Server struct {
 	mux        *http.ServeMux
 	jwtConfig  JWTConfig
 	users      *UserRepository
+	sessions   *SessionStore
 }
 type UserRepository struct {
 	db *pgxpool.Pool
@@ -56,6 +57,11 @@ type loginResponse struct {
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int    `json:"expires_in"`
 }
+type Session struct {
+	ID          string
+	UserID      int `json:"user_id"`
+	RefreshHash string
+}
 
 // type UserStore struct {
 // 	users map[string]User
@@ -83,7 +89,11 @@ type loginResponse struct {
 // 	return user, ok
 // }
 
-func NewServer(addr string, jwtSecret []byte, users *UserRepository) *Server {
+func NewServer(addr string,
+	jwtSecret []byte,
+	users *UserRepository,
+	sessions *SessionStore,
+) *Server {
 	mux := http.NewServeMux()
 	TTL := time.Hour
 	jwtConfig := JWTConfig{
@@ -95,6 +105,7 @@ func NewServer(addr string, jwtSecret []byte, users *UserRepository) *Server {
 		mux:       mux,
 		jwtConfig: jwtConfig,
 		users:     users,
+		sessions:  sessions,
 	}
 	s.httpServer = &http.Server{
 		Addr:              addr,
