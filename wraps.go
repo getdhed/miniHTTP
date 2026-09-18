@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,6 +11,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func writeError(w http.ResponseWriter, status int, code string, message string) error {
@@ -54,7 +58,7 @@ func writeJSON(w http.ResponseWriter, status int, data any) error {
 
 	return nil
 }
-func (s *Server) generateAccessToken(user User) (string, error) {
+func (a *AuthService) generateAccessToken(user User) (string, error) {
 	now := time.Now()
 
 	claims := jwt.RegisteredClaims{
@@ -64,7 +68,7 @@ func (s *Server) generateAccessToken(user User) (string, error) {
 		ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(s.jwtConfig.Secret)
+	tokenString, err := token.SignedString(a.jwtConfig.Secret)
 	if err != nil {
 		return "", err
 	}
@@ -102,4 +106,63 @@ func extractBearerToken(r *http.Request) (string, error) {
 		return "", fmt.Errorf("invalid authorization header")
 	}
 	return parts[1], nil
+}
+
+var ErrInvalidCredentials = errors.New("invalid credentials")
+
+func (a *AuthService) Login(ctx context.Context, email string, password string) (LoginResult, error) {
+
+	if !confirmPassword(password) || !confirmEmail(email) {
+		return LoginResult{}, ErrInvalidCredentials
+	}
+
+	user, err := a.users.findByEmail(ctx, email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return LoginResult{}, ErrInvalidCredentials
+	}
+	if err != nil {
+		return LoginResult{}, fmt.Errorf("find user by email: %w", err)
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return LoginResult{}, ErrInvalidCredentials
+	}
+	accessToken, err := a.generateAccessToken(user)
+	if err != nil {
+		return LoginResult{}, fmt.Errorf("generate access token: %w", err)
+	}
+	refreshToken, err := generateRefreshToken()
+	if err != nil {
+		return LoginResult{}, fmt.Errorf("generate refresh token: %w", err)
+	}
+	refreshHash := hashRefreshToken(refreshToken)
+
+	session := Session{
+		UserID: user.ID,
+	}
+
+	if err := a.sessions.Create(
+		ctx,
+		refreshHash,
+		session,
+		refreshesTTL); err != nil {
+		return LoginResult{}, fmt.Errorf("create session: %w", err)
+	}
+	return LoginResult{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    3600,
+	}, nil
+}
+
+func setRefreshCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(refreshesTTL.Seconds()),
+		Secure:   false,
+	})
 }

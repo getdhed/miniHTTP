@@ -106,7 +106,7 @@ func (s *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.generateAccessToken(user)
+	token, err := s.auth.generateAccessToken(user)
 	if err != nil {
 		if err := writeError(w, http.StatusInternalServerError, "internal error", "internal error"); err != nil {
 			fmt.Println("Произошла ошибка", err)
@@ -125,6 +125,7 @@ func (s *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
+
 	var req loginRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -134,87 +135,22 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 
 	}
-
-	if !confirmPassword(req.Password) || !confirmEmail(req.Email) {
+	LoginResult, err := s.auth.Login(r.Context(), req.Email, req.Password)
+	if err != nil {
 		if err := writeError(w, http.StatusBadRequest, "bad request", "bad request"); err != nil {
 			fmt.Println("Произошла ошибка", err)
 		}
 		return
 	}
-	user, err := s.users.findByEmail(r.Context(), req.Email)
-	if errors.Is(err, pgx.ErrNoRows) {
-		if err := writeError(w, http.StatusUnauthorized, "Ivalid email or password", "Ivalid email or password"); err != nil {
-			fmt.Println("Произошла ошибка", err)
-		}
-		return
-	}
-	if err != nil {
-		if err := writeError(w, http.StatusInternalServerError, "internal error", "internal error"); err != nil {
-			fmt.Println("Произошла ошибка", err)
-		}
-		return
-	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		if err := writeError(w, http.StatusUnauthorized, "Unauthorized", "Unauthorized"); err != nil {
-			fmt.Println("Произошла ошибка", err)
-		}
-		return
-	}
-	token, err := s.generateAccessToken(user)
-	if err != nil {
-		if err := writeError(w, http.StatusInternalServerError, "internal error", "internal error"); err != nil {
-			fmt.Println("Произошла ошибка", err)
-		}
-		return
-	}
-	loginResponse := loginResponse{
-		AccessToken: token,
+	response := loginResponse{
+		AccessToken: LoginResult.AccessToken,
 		TokenType:   "Bearer",
-		ExpiresIn:   3600,
+		ExpiresIn:   LoginResult.ExpiresIn,
 	}
-	refreshToken, err := generateRefreshToken()
-	if err != nil {
-		if err := writeError(
-			w,
-			http.StatusInternalServerError,
-			"internal error",
-			"failed to generate refresh token",
-		); err != nil {
-			fmt.Println(err)
-		}
-		return
-	}
-	refreshHash := hashRefreshToken(refreshToken)
-	session := Session{
-		UserID: user.ID,
-	}
+	setRefreshCookie(w, LoginResult.RefreshToken)
 
-	if err := s.sessions.Create(
-		r.Context(),
-		refreshHash,
-		session,
-		refreshesTTL); err != nil {
-		if err := writeError(
-			w,
-			http.StatusInternalServerError,
-			"internal error",
-			"failed to create session",
-		); err != nil {
-			fmt.Println(err)
-		}
-		return
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     "refresh_token",
-		Value:    refreshToken,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(refreshesTTL.Seconds()),
-		Secure:   false,
-	})
-	if err := writeJSON(w, 200, loginResponse); err != nil {
+	if err := writeJSON(w, http.StatusOK, response); err != nil {
 		fmt.Println("Произошла ошибка", err)
 	}
 }
@@ -261,7 +197,7 @@ func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	oldRefreshToken := cookie.Value
 	oldRefreshHash := hashRefreshToken(oldRefreshToken)
 
-	session, err := s.sessions.Get(r.Context(), oldRefreshHash)
+	session, err := s.auth.sessions.Get(r.Context(), oldRefreshHash)
 	if errors.Is(err, ErrSessionNotFound) {
 		_ = writeError(
 			w,
@@ -286,7 +222,7 @@ func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		ID: session.UserID,
 	}
 
-	accessToken, err := s.generateAccessToken(user)
+	accessToken, err := s.auth.generateAccessToken(user)
 	if err != nil {
 		_ = writeError(
 			w,
@@ -314,7 +250,7 @@ func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		UserID: session.UserID,
 	}
 
-	if err := s.sessions.Create(
+	if err := s.auth.sessions.Create(
 		r.Context(),
 		newRefreshHash,
 		newSession,
@@ -329,7 +265,7 @@ func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.sessions.Delete(
+	if err := s.auth.sessions.Delete(
 		r.Context(),
 		oldRefreshHash,
 	); err != nil {

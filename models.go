@@ -25,7 +25,7 @@ type Server struct {
 	mux        *http.ServeMux
 	jwtConfig  JWTConfig
 	users      *UserRepository
-	sessions   *SessionStore
+	auth       *AuthService
 }
 type UserRepository struct {
 	db *pgxpool.Pool
@@ -63,6 +63,26 @@ type Session struct {
 	RefreshHash string
 }
 
+type AuthService struct {
+	users     *UserRepository
+	sessions  *SessionStore
+	jwtConfig JWTConfig
+}
+
+func NewAuthService(users *UserRepository, sessions *SessionStore, jwtConfig JWTConfig) *AuthService {
+	return &AuthService{
+		users:     users,
+		sessions:  sessions,
+		jwtConfig: jwtConfig,
+	}
+}
+
+type LoginResult struct {
+	AccessToken  string
+	RefreshToken string
+	ExpiresIn    int
+}
+
 // type UserStore struct {
 // 	users map[string]User
 // }
@@ -92,7 +112,7 @@ type Session struct {
 func NewServer(addr string,
 	jwtSecret []byte,
 	users *UserRepository,
-	sessions *SessionStore,
+	authServise *AuthService,
 ) *Server {
 	mux := http.NewServeMux()
 	TTL := time.Hour
@@ -105,7 +125,7 @@ func NewServer(addr string,
 		mux:       mux,
 		jwtConfig: jwtConfig,
 		users:     users,
-		sessions:  sessions,
+		auth:      authServise,
 	}
 	s.httpServer = &http.Server{
 		Addr:              addr,

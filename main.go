@@ -76,11 +76,16 @@ func main() {
 		return
 	}
 	defer redisClient.Close()
-
+	jwtConfig := JWTConfig{
+		Secret: []byte(jwtSecret),
+		TTL:    3600,
+	}
 	sessions := NewSessionStore(redisClient)
-	userRepo := NewUserRepository(pool)
 
-	server := NewServer(":3030", []byte(jwtSecret), userRepo, sessions)
+	userRepo := NewUserRepository(pool)
+	authServise := NewAuthService(userRepo, sessions, jwtConfig)
+
+	server := NewServer(":3030", []byte(jwtSecret), userRepo, authServise)
 	server.routes()
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
