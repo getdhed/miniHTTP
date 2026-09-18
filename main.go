@@ -45,15 +45,15 @@ func (s *Server) routes() {
 
 func main() {
 	if err := godotenv.Load(); err != nil {
-		log.Fatal("failed to load .env")
+		log.Println(".env not found, using environment variables")
 	}
 	jwtSecret, ok := os.LookupEnv("JWT_SECRET")
 	if !ok || jwtSecret == "" {
-		log.Fatal("JWT_SECRET is not set")
+		log.Println("JWT_SECRET is not set")
 	}
 	databaseUrl, ok := os.LookupEnv("DATABASE_URL")
 	if !ok || databaseUrl == "" {
-		log.Fatal("DATABASE_URL is not set")
+		log.Println("DATABASE_URL is not set")
 	}
 	ctx := context.Background()
 
