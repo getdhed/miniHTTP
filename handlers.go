@@ -215,7 +215,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		Secure:   false,
 	})
 	if err := writeJSON(w, 200, loginResponse); err != nil {
-		fmt.Println("Произошла ошибка", loginResponse)
+		fmt.Println("Произошла ошибка", err)
 	}
 }
 
@@ -238,60 +238,127 @@ func (s *Server) meHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("refresh_token")
-	if err != nil {
-		if errors.Is(err, ErrSessionNotFound) {
-			if err := writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized"); err != nil {
-				fmt.Println(err)
-			}
-		}
+	if errors.Is(err, http.ErrNoCookie) {
+		_ = writeError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"refresh token not found",
+		)
 		return
 	}
-	refreshToken := cookie.Value
-	refreshHash := hashRefreshToken(refreshToken)
 
-	session, err := s.sessions.Get(r.Context(), refreshHash)
-	if errors.Is(err, ErrSessionNotFound) {
-		if err := writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized"); err != nil {
-			fmt.Println(err)
-		}
+	if err != nil {
+		_ = writeError(
+			w,
+			http.StatusBadRequest,
+			"bad request",
+			"invalid cookie",
+		)
 		return
-	} else if err != nil {
-		if err := writeError(
+	}
+
+	oldRefreshToken := cookie.Value
+	oldRefreshHash := hashRefreshToken(oldRefreshToken)
+
+	session, err := s.sessions.Get(r.Context(), oldRefreshHash)
+	if errors.Is(err, ErrSessionNotFound) {
+		_ = writeError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"invalid refresh token",
+		)
+		return
+	}
+
+	if err != nil {
+		_ = writeError(
 			w,
 			http.StatusInternalServerError,
 			"internal error",
 			"failed to get session",
-		); err != nil {
-			fmt.Println(err)
-		}
+		)
 		return
 	}
-	user := User{ID: session.UserID}
+
+	user := User{
+		ID: session.UserID,
+	}
+
 	accessToken, err := s.generateAccessToken(user)
 	if err != nil {
-		if err := writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized"); err != nil {
-			fmt.Println(err)
-		}
+		_ = writeError(
+			w,
+			http.StatusInternalServerError,
+			"internal error",
+			"failed to generate access token",
+		)
 		return
 	}
-	if err := s.sessions.Delete(r.Context(), refreshHash); err != nil {
-		if err := writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized"); err != nil {
-			fmt.Println(err)
-		}
-		return
-	}
+
 	newRefreshToken, err := generateRefreshToken()
 	if err != nil {
-		if err := writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized"); err != nil {
-			fmt.Println(err)
-		}
+		_ = writeError(
+			w,
+			http.StatusInternalServerError,
+			"internal error",
+			"failed to generate refresh token",
+		)
 		return
 	}
-	newHashToken := hashRefreshToken(newRefreshToken)
-	session := Session{
-		ID:          stconv.Itoa(user.ID),
-		RefreshHash: newHashToken,
-	}
-	s.sessions.Create(r.Context(), newHash, s, refreshesTTL)
 
+	newRefreshHash := hashRefreshToken(newRefreshToken)
+
+	newSession := Session{
+		UserID: session.UserID,
+	}
+
+	if err := s.sessions.Create(
+		r.Context(),
+		newRefreshHash,
+		newSession,
+		refreshesTTL,
+	); err != nil {
+		_ = writeError(
+			w,
+			http.StatusInternalServerError,
+			"internal error",
+			"failed to create new session",
+		)
+		return
+	}
+
+	if err := s.sessions.Delete(
+		r.Context(),
+		oldRefreshHash,
+	); err != nil {
+		_ = writeError(
+			w,
+			http.StatusInternalServerError,
+			"internal error",
+			"failed to rotate session",
+		)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    newRefreshToken,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(refreshesTTL.Seconds()),
+		Secure:   false,
+	})
+
+	response := loginResponse{
+		AccessToken: accessToken,
+		TokenType:   "Bearer",
+		ExpiresIn:   3600,
+	}
+
+	if err := writeJSON(w, http.StatusOK, response); err != nil {
+		fmt.Println(err)
+	}
 }
