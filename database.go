@@ -22,7 +22,7 @@ func connectDB(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 func (r *UserRepository) findByEmail(ctx context.Context, email string) (User, error) {
 	row := r.db.QueryRow(
 		ctx,
-		`SELECT id,password_hash
+		`SELECT id,name,password_hash
 		FROM users
 		WHERE email=$1;`,
 		email)

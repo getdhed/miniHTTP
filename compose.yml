@@ -33,6 +33,14 @@ services:
       postgres:
         condition: service_healthy
 
+  redis:
+    image: redis:8-alpine
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   api:
     build:
@@ -45,6 +53,7 @@ services:
     environment:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_ADDR: ${REDIS_ADDR:? is required}
 
     depends_on:
       migrate:
