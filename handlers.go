@@ -12,6 +12,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const refreshesTTL = 7 * 24 * time.Hour
+
 func myHandler(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"message": "hello bro 4",
@@ -188,8 +190,6 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		UserID: user.ID,
 	}
 
-	const refreshesTTL = 7 * 24 * time.Hour
-
 	if err := s.sessions.Create(
 		r.Context(),
 		refreshHash,
@@ -205,7 +205,15 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    refreshToken,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(refreshesTTL.Seconds()),
+		Secure:   false,
+	})
 	if err := writeJSON(w, 200, loginResponse); err != nil {
 		fmt.Println("Произошла ошибка", loginResponse)
 	}
@@ -226,4 +234,64 @@ func (s *Server) meHandler(w http.ResponseWriter, r *http.Request) {
 	if err := writeJSON(w, http.StatusOK, user); err != nil {
 		fmt.Println("Ошибка:", err)
 	}
+}
+
+func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		if errors.Is(err, ErrSessionNotFound) {
+			if err := writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized"); err != nil {
+				fmt.Println(err)
+			}
+		}
+		return
+	}
+	refreshToken := cookie.Value
+	refreshHash := hashRefreshToken(refreshToken)
+
+	session, err := s.sessions.Get(r.Context(), refreshHash)
+	if errors.Is(err, ErrSessionNotFound) {
+		if err := writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized"); err != nil {
+			fmt.Println(err)
+		}
+		return
+	} else if err != nil {
+		if err := writeError(
+			w,
+			http.StatusInternalServerError,
+			"internal error",
+			"failed to get session",
+		); err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+	user := User{ID: session.UserID}
+	accessToken, err := s.generateAccessToken(user)
+	if err != nil {
+		if err := writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized"); err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+	if err := s.sessions.Delete(r.Context(), refreshHash); err != nil {
+		if err := writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized"); err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+	newRefreshToken, err := generateRefreshToken()
+	if err != nil {
+		if err := writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized"); err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+	newHashToken := hashRefreshToken(newRefreshToken)
+	session := Session{
+		ID:          stconv.Itoa(user.ID),
+		RefreshHash: newHashToken,
+	}
+	s.sessions.Create(r.Context(), newHash, s, refreshesTTL)
+
 }
