@@ -83,6 +83,11 @@ type LoginResult struct {
 	ExpiresIn    int
 }
 
+type RefreshResponse struct {
+	RefreshToken string
+	AccessToken  string
+}
+
 // type UserStore struct {
 // 	users map[string]User
 // }

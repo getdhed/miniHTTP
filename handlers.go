@@ -148,6 +148,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		TokenType:   "Bearer",
 		ExpiresIn:   LoginResult.ExpiresIn,
 	}
+
 	setRefreshCookie(w, LoginResult.RefreshToken)
 
 	if err := writeJSON(w, http.StatusOK, response); err != nil {
@@ -173,6 +174,7 @@ func (s *Server) meHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("=== ENTER REFRESH HANDLER ===")
 	cookie, err := r.Cookie("refresh_token")
 	if errors.Is(err, http.ErrNoCookie) {
 		_ = writeError(
@@ -183,104 +185,17 @@ func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
-
+	refreshResponse, err := s.auth.refresh(r.Context(), cookie.Value)
 	if err != nil {
-		_ = writeError(
-			w,
-			http.StatusBadRequest,
-			"bad request",
-			"invalid cookie",
-		)
-		return
-	}
-
-	oldRefreshToken := cookie.Value
-	oldRefreshHash := hashRefreshToken(oldRefreshToken)
-
-	session, err := s.auth.sessions.Get(r.Context(), oldRefreshHash)
-	if errors.Is(err, ErrSessionNotFound) {
-		_ = writeError(
-			w,
-			http.StatusUnauthorized,
-			"unauthorized",
-			"invalid refresh token",
-		)
-		return
-	}
-
-	if err != nil {
-		_ = writeError(
-			w,
-			http.StatusInternalServerError,
-			"internal error",
-			"failed to get session",
-		)
-		return
-	}
-
-	user := User{
-		ID: session.UserID,
-	}
-
-	accessToken, err := s.auth.generateAccessToken(user)
-	if err != nil {
-		_ = writeError(
-			w,
-			http.StatusInternalServerError,
-			"internal error",
-			"failed to generate access token",
-		)
-		return
-	}
-
-	newRefreshToken, err := generateRefreshToken()
-	if err != nil {
-		_ = writeError(
-			w,
-			http.StatusInternalServerError,
-			"internal error",
-			"failed to generate refresh token",
-		)
-		return
-	}
-
-	newRefreshHash := hashRefreshToken(newRefreshToken)
-
-	newSession := Session{
-		UserID: session.UserID,
-	}
-
-	if err := s.auth.sessions.Create(
-		r.Context(),
-		newRefreshHash,
-		newSession,
-		refreshesTTL,
-	); err != nil {
-		_ = writeError(
-			w,
-			http.StatusInternalServerError,
-			"internal error",
-			"failed to create new session",
-		)
-		return
-	}
-
-	if err := s.auth.sessions.Delete(
-		r.Context(),
-		oldRefreshHash,
-	); err != nil {
-		_ = writeError(
-			w,
-			http.StatusInternalServerError,
-			"internal error",
-			"failed to rotate session",
-		)
-		return
+		if err := writeError(w, http.StatusInternalServerError, "internal error", "internal error"); err != nil {
+			fmt.Println(err)
+			return
+		}
 	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "refresh_token",
-		Value:    newRefreshToken,
+		Value:    refreshResponse.RefreshToken,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
@@ -289,7 +204,7 @@ func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	response := loginResponse{
-		AccessToken: accessToken,
+		AccessToken: refreshResponse.AccessToken,
 		TokenType:   "Bearer",
 		ExpiresIn:   3600,
 	}
@@ -297,4 +212,31 @@ func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	if err := writeJSON(w, http.StatusOK, response); err != nil {
 		fmt.Println(err)
 	}
+}
+
+func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		if err := writeError(w, http.StatusInternalServerError, "internal error", "internal error"); err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+	if err := s.auth.logout(r.Context(), cookie.Value); err != nil {
+		if err := writeError(w, http.StatusInternalServerError, "internal error", "internal error"); err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+		Secure:   false,
+	})
+	w.WriteHeader(http.StatusNoContent)
 }
