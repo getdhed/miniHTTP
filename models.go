@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 type responseWriter struct {
@@ -86,6 +89,32 @@ type LoginResult struct {
 type RefreshResponse struct {
 	RefreshToken string
 	AccessToken  string
+}
+
+type RateLimiter interface {
+	Allow(ctx context.Context, key string, limit int64, window time.Duration) (bool, time.Duration, error)
+}
+type RedisRateLimiter struct {
+	client *redis.Client
+}
+
+func NewRedisRateLimiter(client *redis.Client) *RedisRateLimiter {
+	return &RedisRateLimiter{
+		client: client,
+	}
+}
+
+var errInvalidData = errors.New("invalid data")
+
+func (r *RedisRateLimiter) Allow(ctx context.Context, key string, limit int64, window time.Duration) (bool, time.Duration, error) {
+	if limit <= 0 || window <= 0 {
+		return false, 0, errInvalidData
+	}
+	count, err := r.client.Get(ctx, key).Int64()
+	if err != nil {
+		return false, 0, errInvalidData
+	}
+	return false, 0, errInvalidData
 }
 
 // type UserStore struct {
