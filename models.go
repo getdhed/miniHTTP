@@ -106,17 +106,6 @@ func NewRedisRateLimiter(client *redis.Client) *RedisRateLimiter {
 
 var errInvalidData = errors.New("invalid data")
 
-func (r *RedisRateLimiter) Allow(ctx context.Context, key string, limit int64, window time.Duration) (bool, time.Duration, error) {
-	if limit <= 0 || window <= 0 {
-		return false, 0, errInvalidData
-	}
-	count, err := r.client.Get(ctx, key).Int64()
-	if err != nil {
-		return false, 0, errInvalidData
-	}
-	return false, 0, errInvalidData
-}
-
 // type UserStore struct {
 // 	users map[string]User
 // }

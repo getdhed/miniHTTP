@@ -234,3 +234,45 @@ func (a *AuthService) logout(ctx context.Context, refreshToken string) error {
 	}
 	return nil
 }
+
+var errUnexpectedResult = errors.New("errUnexpectedResult")
+
+func (r *RedisRateLimiter) Allow(ctx context.Context, key string, limit int64, window time.Duration) (bool, time.Duration, error) {
+	if limit <= 0 || window <= 0 {
+		return false, 0, errInvalidData
+	}
+	if limit <= 0 || window < time.Second {
+		return false, 0, errInvalidData
+	}
+
+	script := redis.NewScript(`
+        local count = redis.call("INCR", KEYS[1])
+
+        if count == 1 then
+            redis.call("EXPIRE", KEYS[1], ARGV[1])
+        end
+		local ttl = redis.call("PTTL", KEYS[1])
+        return {count,ttl}
+    `)
+
+	windowSeconds := int64(window / time.Second)
+
+	values, err := script.Run(ctx, r.client, []string{key}, windowSeconds).Int64Slice()
+	if err != nil {
+		return false, 0, err
+	}
+	if len(values) != 2 {
+		return false, 0, errUnexpectedResult
+	}
+
+	count := values[0]
+	ttlMs := values[1]
+	ttl := time.Duration(ttlMs) * time.Millisecond
+
+	if count <= limit {
+		return true, ttl, nil
+	} else {
+		return false, ttl, nil
+	}
+
+}
