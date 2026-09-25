@@ -34,15 +34,17 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/health", myHandler)
 	s.mux.HandleFunc("GET /success", successHandler)
 	s.mux.HandleFunc("GET /error", errorHandler)
-	s.mux.HandleFunc("/auth/login", s.loginHandler)
-	s.mux.HandleFunc("POST /register", s.registerHandler)
+
+	s.mux.Handle("POST /auth/login",
+		s.rateLimitMiddleware("login", 3, time.Hour, http.HandlerFunc(s.loginHandler)))
+
+	s.mux.Handle("POST /auth/register",
+		s.rateLimitMiddleware("register", 3, time.Hour, http.HandlerFunc(s.registerHandler)))
+
 	s.mux.HandleFunc("/auth/refresh", s.refreshHandler)
 	s.mux.HandleFunc("/auth/logout", s.logoutHandler)
-	s.mux.Handle(
-		"GET /me",
-		s.authMiddleware(http.HandlerFunc(s.meHandler)),
-	)
-
+	s.mux.Handle("GET /me", s.authMiddleware(http.HandlerFunc(s.meHandler)))
+	// s.mux.Handle("GET /test", s.rateLimitMiddleware(http.HandlerFunc(s.testHandler)))
 }
 
 func main() {
@@ -84,9 +86,12 @@ func main() {
 	sessions := NewSessionStore(redisClient)
 
 	userRepo := NewUserRepository(pool)
-	authServise := NewAuthService(userRepo, sessions, jwtConfig)
 
-	server := NewServer(":3030", []byte(jwtSecret), userRepo, authServise)
+	rateLimiter := NewRedisRateLimiter(redisClient)
+	LAL := NewRedisLoginAttemptLimiter(redisClient)
+	authServise := NewAuthService(userRepo, sessions, jwtConfig, LAL)
+
+	server := NewServer(":3030", []byte(jwtSecret), userRepo, authServise, rateLimiter)
 	server.routes()
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()

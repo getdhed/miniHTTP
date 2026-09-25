@@ -24,6 +24,10 @@ func myHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) testHandler(w http.ResponseWriter, r *http.Request) {
+
+}
+
 func successHandler(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"message": "everything is ok",

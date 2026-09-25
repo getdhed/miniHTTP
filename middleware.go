@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
+	"net"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -78,5 +81,37 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), userIDKey, userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 
+	})
+}
+
+func (s *Server) rateLimitMiddleware(bucket string, limit int64, window time.Duration, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println(r.RemoteAddr)
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		key := "rate_limit:" + bucket + ":" + host
+		isAllowed, ttl, err := s.RateLimiter.Allow(r.Context(), key, limit, window)
+		if err != nil {
+			if err := writeError(w, http.StatusInternalServerError, "internal error", "internal error"); err != nil {
+				fmt.Println(err)
+			}
+			return
+		}
+		if !isAllowed {
+
+			retryAfter := int64(math.Ceil(ttl.Seconds()))
+			w.Header().Set("Retry-After", strconv.FormatInt(retryAfter, 10))
+
+			if err := writeError(w, http.StatusTooManyRequests, "too many requests", "too many requests"); err != nil {
+				fmt.Println(err)
+			}
+			return
+		}
+
+		next.ServeHTTP(w, r)
 	})
 }

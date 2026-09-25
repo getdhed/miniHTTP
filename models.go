@@ -24,12 +24,14 @@ type errorResponse struct {
 }
 
 type Server struct {
-	httpServer *http.Server
-	mux        *http.ServeMux
-	jwtConfig  JWTConfig
-	users      *UserRepository
-	auth       *AuthService
+	httpServer  *http.Server
+	mux         *http.ServeMux
+	jwtConfig   JWTConfig
+	users       *UserRepository
+	auth        *AuthService
+	RateLimiter RateLimiter
 }
+
 type UserRepository struct {
 	db *pgxpool.Pool
 }
@@ -50,6 +52,7 @@ type User struct {
 	Name         string
 	CreatedAt    time.Time
 }
+
 type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -67,16 +70,39 @@ type Session struct {
 }
 
 type AuthService struct {
-	users     *UserRepository
-	sessions  *SessionStore
-	jwtConfig JWTConfig
+	users         *UserRepository
+	sessions      *SessionStore
+	jwtConfig     JWTConfig
+	LoginAttempts LoginAttemptsLimiter
 }
 
-func NewAuthService(users *UserRepository, sessions *SessionStore, jwtConfig JWTConfig) *AuthService {
+type LoginAttemptsLimiter interface {
+	IsBlocked(ctx context.Context, key string, limit int64) (bool, time.Duration, error)
+
+	RegisterFailure(ctx context.Context, key string, limit int64, window time.Duration) (bool, time.Duration, error)
+
+	Reset(ctx context.Context, key string) error
+}
+type RedisLoginAttemptLimiter struct {
+	client *redis.Client
+}
+
+func NewRedisLoginAttemptLimiter(client *redis.Client) *RedisLoginAttemptLimiter {
+	return &RedisLoginAttemptLimiter{
+		client: client,
+	}
+}
+
+func NewAuthService(users *UserRepository,
+	sessions *SessionStore,
+	jwtConfig JWTConfig,
+	loginAttempts RedisLoginAttemptLimiter,
+) *AuthService {
 	return &AuthService{
-		users:     users,
-		sessions:  sessions,
-		jwtConfig: jwtConfig,
+		users:         users,
+		sessions:      sessions,
+		jwtConfig:     jwtConfig,
+		LoginAttempts: loginAttempts,
 	}
 }
 
@@ -101,6 +127,65 @@ type RedisRateLimiter struct {
 func NewRedisRateLimiter(client *redis.Client) *RedisRateLimiter {
 	return &RedisRateLimiter{
 		client: client,
+	}
+}
+
+func (r *RedisLoginAttemptLimiter) Reset(ctx context.Context, key string) error {
+	return r.client.Del(ctx, key).Err()
+}
+
+func (r *RedisLoginAttemptLimiter) IsBlocked(
+	ctx context.Context,
+	key string,
+	limit int64,
+) (bool, time.Duration, error) {
+	if limit <= 0 {
+		return false, 0, errInvalidData
+	}
+
+	count, err := r.client.Get(ctx, key).Int64()
+	if errors.Is(err, redis.Nil) {
+		return false, 0, nil
+	}
+	if err != nil {
+		return false, 0, err
+	}
+
+	if count < limit {
+		return false, 0, nil
+	}
+
+	ttl, err := r.client.PTTL(ctx, key).Result()
+	if err != nil {
+		return false, 0, err
+	}
+
+	return true, ttl, nil
+}
+
+func (r *RedisLoginAttemptLimiter) RegisterFailure(
+	ctx context.Context,
+	key string,
+	limit int64,
+	window time.Duration,
+) (bool, time.Duration, error) {
+	windowSeconds := int64(window / time.Second)
+	script := redis.NewScript(`
+	local count = redis.call("INCR", KEYS[1])
+
+	if count == 1 then
+		redis.call("EXPIRE", KEYS[1], ARGV[1])
+	end
+
+	local ttl = redis.call("PTTL", KEYS[1])
+
+	return {count, ttl}
+	`)
+
+	values, err := script.Run(ctx, r.client, []string{key}, windowSeconds).Int64Slice()
+
+	if err != nil {
+		return false, 0, err
 	}
 }
 
@@ -136,6 +221,7 @@ func NewServer(addr string,
 	jwtSecret []byte,
 	users *UserRepository,
 	authServise *AuthService,
+	rateLimiter *RedisRateLimiter,
 ) *Server {
 	mux := http.NewServeMux()
 	TTL := time.Hour
@@ -145,10 +231,11 @@ func NewServer(addr string,
 	}
 
 	s := &Server{
-		mux:       mux,
-		jwtConfig: jwtConfig,
-		users:     users,
-		auth:      authServise,
+		mux:         mux,
+		jwtConfig:   jwtConfig,
+		users:       users,
+		auth:        authServise,
+		RateLimiter: rateLimiter,
 	}
 	s.httpServer = &http.Server{
 		Addr:              addr,
