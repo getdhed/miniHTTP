@@ -106,3 +106,11 @@ func extractBearerToken(r *http.Request) (string, error) {
 }
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
+
+func confirmEmail(email string) bool {
+	return email != ""
+}
+
+func confirmPassword(password string) bool {
+	return password != ""
+}

@@ -41,11 +41,15 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /auth/register",
 		s.rateLimitMiddleware("register", 3, time.Hour, http.HandlerFunc(s.registerHandler)))
 
+	s.mux.HandleFunc("GET /posts", s.getAllPostsHandler)
+	s.mux.HandleFunc("GET /user/{userID}/posts", s.getUsersPostsHandler)
+	s.mux.HandleFunc("GET /posts/{postID}", s.getPostHandler)
+
 	s.mux.HandleFunc("/auth/refresh", s.refreshHandler)
 	s.mux.HandleFunc("/auth/logout", s.logoutHandler)
 	s.mux.Handle("GET /me", s.authMiddleware(http.HandlerFunc(s.meHandler)))
 	// s.mux.Handle("GET /test", s.rateLimitMiddleware(http.HandlerFunc(s.testHandler)))
-	s.mux.HandleFunc("POST /posts", s.postsHandler)
+	s.mux.HandleFunc("POST /posts", s.getAllPostsHandler)
 	s.mux.Handle(
 		"GET /me",
 		s.authMiddleware(http.HandlerFunc(s.meHandler)),
@@ -96,8 +100,8 @@ func main() {
 	rateLimiter := NewRedisRateLimiter(redisClient)
 	LAL := NewRedisLoginAttemptLimiter(redisClient)
 	authServise := NewAuthService(userRepo, sessions, jwtConfig, LAL)
-
-	server := NewServer(":3030", []byte(jwtSecret), userRepo, authServise, rateLimiter)
+	PGPostRepo := NewPgPostRepository(pool)
+	server := NewServer(":3030", []byte(jwtSecret), userRepo, PGPostRepo, authServise, rateLimiter)
 	server.routes()
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()

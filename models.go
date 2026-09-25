@@ -30,11 +30,29 @@ type Server struct {
 	users       *UserRepository
 	auth        *AuthService
 	RateLimiter RateLimiter
+	posts       PostRepository
 }
 
 type UserRepository struct {
 	db *pgxpool.Pool
 }
+
+type PGPostsRepository struct {
+	db *pgxpool.Pool
+}
+
+func NewPgPostRepository(db *pgxpool.Pool) *PGPostsRepository {
+	return &PGPostsRepository{
+		db: db,
+	}
+}
+
+type PostRepository interface {
+	FindByID(ctx context.Context, postID int64) (Post, error)
+	FindAll(ctx context.Context) ([]Post, error)
+	FindByUserID(ctx context.Context, userID int64) ([]Post, error)
+}
+
 type JWTConfig struct {
 	Secret []byte
 	TTL    time.Duration
@@ -75,6 +93,14 @@ type AuthService struct {
 	jwtConfig     JWTConfig
 	LoginAttempts LoginAttemptsLimiter
 }
+type Post struct {
+	ID        int64         `json:"id"`
+	UserID    int64         `json:"user_id"`
+	Title     string        `json:"title"`
+	Content   string        `json:"content"`
+	CreatedAt time.Duration `json:"created_at"`
+	UpdatedAt time.Duration `json:"updated_at"`
+}
 
 type LoginAttemptsLimiter interface {
 	IsBlocked(ctx context.Context, key string, limit int64) (bool, time.Duration, error)
@@ -99,10 +125,10 @@ func NewAuthService(users *UserRepository,
 	loginAttempts *RedisLoginAttemptLimiter,
 ) *AuthService {
 	return &AuthService{
-		users:         users,
-		sessions:      sessions,
-		jwtConfig:     jwtConfig,
-		LoginAttempts: loginAttempts,
+		users:     users,
+		sessions:  sessions,
+		jwtConfig: jwtConfig,
+		//LoginAttempts: loginAttempts,
 	}
 }
 
@@ -132,72 +158,6 @@ func NewRedisRateLimiter(client *redis.Client) *RedisRateLimiter {
 
 func (r *RedisLoginAttemptLimiter) Reset(ctx context.Context, key string) error {
 	return r.client.Del(ctx, key).Err()
-}
-
-func (r *RedisLoginAttemptLimiter) IsBlocked(
-	ctx context.Context,
-	key string,
-	limit int64,
-) (bool, time.Duration, error) {
-	if limit <= 0 {
-		return false, 0, errInvalidData
-	}
-
-	count, err := r.client.Get(ctx, key).Int64()
-	if errors.Is(err, redis.Nil) {
-		return false, 0, nil
-	}
-	if err != nil {
-		return false, 0, err
-	}
-
-	if count < limit {
-		return false, 0, nil
-	}
-
-	ttl, err := r.client.PTTL(ctx, key).Result()
-	if err != nil {
-		return false, 0, err
-	}
-
-	return true, ttl, nil
-}
-
-func (r *RedisLoginAttemptLimiter) RegisterFailure(
-	ctx context.Context,
-	key string,
-	limit int64,
-	window time.Duration,
-) (bool, time.Duration, error) {
-	windowSeconds := int64(window / time.Second)
-	script := redis.NewScript(`
-	local count = redis.call("INCR", KEYS[1])
-
-	if count == 1 then
-		redis.call("EXPIRE", KEYS[1], ARGV[1])
-	end
-
-	local ttl = redis.call("PTTL", KEYS[1])
-
-	return {count, ttl}
-	`)
-
-	values, err := script.Run(ctx, r.client, []string{key}, windowSeconds).Int64Slice()
-	if err != nil {
-		return false, 0, err
-	}
-	if len(values) != 2 {
-		return false, 0, errUnexpectedResult
-	}
-
-	count := values[0]
-	ttl := time.Duration(values[1]) * time.Millisecond
-
-	if count >= limit {
-		return true, ttl, nil
-	}
-
-	return false, ttl, nil
 }
 
 var errInvalidData = errors.New("invalid data")
@@ -231,6 +191,7 @@ var errInvalidData = errors.New("invalid data")
 func NewServer(addr string,
 	jwtSecret []byte,
 	users *UserRepository,
+	posts *PGPostsRepository,
 	authServise *AuthService,
 	rateLimiter *RedisRateLimiter,
 ) *Server {
@@ -245,6 +206,7 @@ func NewServer(addr string,
 		mux:         mux,
 		jwtConfig:   jwtConfig,
 		users:       users,
+		posts:       posts,
 		auth:        authServise,
 		RateLimiter: rateLimiter,
 	}

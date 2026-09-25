@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -46,15 +47,63 @@ func errorHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func confirmEmail(email string) bool {
-	return email != ""
+func (s *Server) getAllPostsHandler(w http.ResponseWriter, r *http.Request) {
+	posts, err := s.posts.FindAll(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "interanl error", "interanl error")
+		return
+	}
+	if err := writeJSON(w, http.StatusOK, posts); err != nil {
+		fmt.Println("проищошла ошибка", err)
+	}
 }
 
-func confirmPassword(password string) bool {
-	return password != ""
+func (s *Server) getUsersPostsHandler(w http.ResponseWriter, r *http.Request) {
+	userIDString := r.PathValue("userID")
+	userID, err := strconv.ParseInt(userIDString, 10, 64)
+	if err != nil {
+		if err := writeError(w, http.StatusBadRequest, "bad request", "bad request"); err != nil {
+			fmt.Println("произошла ошибка:", err)
+		}
+		return
+	}
+	posts, err := s.posts.FindByUserID(r.Context(), userID)
+	if err != nil {
+		if err := writeError(w, http.StatusInternalServerError, "internal error", "internal error"); err != nil {
+			fmt.Println("произошла ошибка:", err)
+		}
+		return
+	}
+	if err := writeJSON(w, http.StatusOK, posts); err != nil {
+		fmt.Println("произошла ошибка:", err)
+	}
 }
-func (s *Server) postsHandler(w http.ResponseWriter, r *http.Request) {
 
+func (s *Server) getPostHandler(w http.ResponseWriter, r *http.Request) {
+	postIDString := r.PathValue("postID")
+	postID, err := strconv.ParseInt(postIDString, 10, 64)
+	if err != nil {
+		if err := writeError(w, http.StatusBadRequest, "bad request", "bad request"); err != nil {
+			fmt.Println("произошла ошибка:", err)
+		}
+		return
+	}
+	if postID <= 0 {
+		if err := writeError(w, http.StatusBadRequest, "bad request", "bad request"); err != nil {
+			fmt.Println("произошла ошибка:", err)
+		}
+		return
+	}
+	post, err := s.posts.FindByID(r.Context(), postID)
+	if err != nil {
+		if err := writeError(w, http.StatusNotFound, "not found", "not found"); err != nil {
+			fmt.Println("произошла ошибка:", err)
+		}
+		return
+	}
+	if err := writeJSON(w, http.StatusOK, post); err != nil {
+		fmt.Println("произошла ошибка: ", err)
+	}
 }
 
 func (s *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
