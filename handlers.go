@@ -49,6 +49,10 @@ func confirmEmail(email string) bool {
 func confirmPassword(password string) bool {
 	return password != ""
 }
+func (s *Server)postsHandler(w http.responseWriter, r *http.Request){
+
+
+}
 
 func (s *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
