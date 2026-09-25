@@ -47,6 +47,29 @@ func errorHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (s *Server) createPostHandler(w http.ResponseWriter, r *http.Request) {
+	var post Post
+	if err := json.NewDecoder(r.Body).Decode(&post); err != nil {
+		if err := writeError(w, http.StatusBadRequest, "bad request", "bad request"); err != nil {
+			fmt.Println("произошла ошибка: ", err)
+		}
+		return
+	}
+
+	err := s.posts.CreatePost(r.Context(), post)
+	if err != nil {
+		if err := writeError(w, http.StatusInternalServerError, "internal error", "internal error"); err != nil {
+			fmt.Println("произошла ошибка: ", err)
+		}
+		return
+	}
+
+	if err := writeJSON(w, http.StatusCreated, nil); err != nil {
+		fmt.Println("произошла ошибка: ", err)
+	}
+
+}
+
 func (s *Server) getAllPostsHandler(w http.ResponseWriter, r *http.Request) {
 	posts, err := s.posts.FindAll(r.Context())
 	if err != nil {

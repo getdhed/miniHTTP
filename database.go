@@ -135,3 +135,15 @@ func (r *PGPostsRepository) FindByUserID(ctx context.Context, userID int64) ([]P
 	}
 	return posts, nil
 }
+
+func (r *PGPostsRepository) CreatePost(ctx context.Context, newPost Post) error {
+	_, err := r.db.Exec(ctx, `
+	INSERT INTO posts
+	(user_id,title,content)
+	values($1,$2,$3);
+	`, newPost.UserID, newPost.Title, newPost.Content)
+	if err != nil {
+		return err
+	}
+	return nil
+}

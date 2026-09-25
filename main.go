@@ -44,16 +44,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /posts", s.getAllPostsHandler)
 	s.mux.HandleFunc("GET /user/{userID}/posts", s.getUsersPostsHandler)
 	s.mux.HandleFunc("GET /posts/{postID}", s.getPostHandler)
-
+	s.mux.HandleFunc("POST /posts", s.createPostHandler)
 	s.mux.HandleFunc("/auth/refresh", s.refreshHandler)
 	s.mux.HandleFunc("/auth/logout", s.logoutHandler)
 	s.mux.Handle("GET /me", s.authMiddleware(http.HandlerFunc(s.meHandler)))
 	// s.mux.Handle("GET /test", s.rateLimitMiddleware(http.HandlerFunc(s.testHandler)))
-	s.mux.HandleFunc("POST /posts", s.getAllPostsHandler)
-	s.mux.Handle(
-		"GET /me",
-		s.authMiddleware(http.HandlerFunc(s.meHandler)),
-	)
+	//s.mux.HandleFunc("POST /posts", s.getAllPostsHandler)
 
 }
 

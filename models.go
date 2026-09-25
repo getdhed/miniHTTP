@@ -51,6 +51,7 @@ type PostRepository interface {
 	FindByID(ctx context.Context, postID int64) (Post, error)
 	FindAll(ctx context.Context) ([]Post, error)
 	FindByUserID(ctx context.Context, userID int64) ([]Post, error)
+	CreatePost(ctx context.Context, post Post) error
 }
 
 type JWTConfig struct {
