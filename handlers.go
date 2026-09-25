@@ -48,8 +48,22 @@ func errorHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createPostHandler(w http.ResponseWriter, r *http.Request) {
-	var post Post
+
+	userID, ok := r.Context().Value(userIDKey).(int)
+	if !ok {
+		fmt.Println("произошла ошибка: ", ok)
+		if err := writeError(w, http.StatusBadRequest, "bad request", "bad request"); err != nil {
+			fmt.Println("произошла ошибка: ", err)
+		}
+		return
+	}
+
+	post := Post{
+		UserID: int64(userID),
+	}
+
 	if err := json.NewDecoder(r.Body).Decode(&post); err != nil {
+		fmt.Println("произошла ошибка: ", err)
 		if err := writeError(w, http.StatusBadRequest, "bad request", "bad request"); err != nil {
 			fmt.Println("произошла ошибка: ", err)
 		}
@@ -58,6 +72,7 @@ func (s *Server) createPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := s.posts.CreatePost(r.Context(), post)
 	if err != nil {
+		fmt.Println("произошла ошибка: ", err)
 		if err := writeError(w, http.StatusInternalServerError, "internal error", "internal error"); err != nil {
 			fmt.Println("произошла ошибка: ", err)
 		}
@@ -73,6 +88,7 @@ func (s *Server) createPostHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getAllPostsHandler(w http.ResponseWriter, r *http.Request) {
 	posts, err := s.posts.FindAll(r.Context())
 	if err != nil {
+		fmt.Println("проищошла ошибка", err)
 		writeError(w, http.StatusInternalServerError, "interanl error", "interanl error")
 		return
 	}
@@ -214,6 +230,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 
 	}
+
 	LoginResult, err := s.auth.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		if err := writeError(w, http.StatusBadRequest, "bad request", "bad request"); err != nil {

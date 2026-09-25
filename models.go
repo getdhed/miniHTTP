@@ -95,12 +95,12 @@ type AuthService struct {
 	LoginAttempts LoginAttemptsLimiter
 }
 type Post struct {
-	ID        int64         `json:"id"`
-	UserID    int64         `json:"user_id"`
-	Title     string        `json:"title"`
-	Content   string        `json:"content"`
-	CreatedAt time.Duration `json:"created_at"`
-	UpdatedAt time.Duration `json:"updated_at"`
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	Title     string    `json:"title"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type LoginAttemptsLimiter interface {
