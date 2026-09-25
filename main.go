@@ -45,6 +45,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/auth/logout", s.logoutHandler)
 	s.mux.Handle("GET /me", s.authMiddleware(http.HandlerFunc(s.meHandler)))
 	// s.mux.Handle("GET /test", s.rateLimitMiddleware(http.HandlerFunc(s.testHandler)))
+	s.mux.HandleFunc("POST /posts", s.postsHandler)
+	s.mux.Handle(
+		"GET /me",
+		s.authMiddleware(http.HandlerFunc(s.meHandler)),
+	)
+
 }
 
 func main() {

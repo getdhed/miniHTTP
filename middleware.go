@@ -59,7 +59,6 @@ func recoverMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		tokenString, err := extractBearerToken(r)
 		if err != nil {
 			fmt.Println("ошибка", err)

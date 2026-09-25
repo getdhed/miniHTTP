@@ -96,7 +96,7 @@ func NewRedisLoginAttemptLimiter(client *redis.Client) *RedisLoginAttemptLimiter
 func NewAuthService(users *UserRepository,
 	sessions *SessionStore,
 	jwtConfig JWTConfig,
-	loginAttempts RedisLoginAttemptLimiter,
+	loginAttempts *RedisLoginAttemptLimiter,
 ) *AuthService {
 	return &AuthService{
 		users:         users,
@@ -183,10 +183,21 @@ func (r *RedisLoginAttemptLimiter) RegisterFailure(
 	`)
 
 	values, err := script.Run(ctx, r.client, []string{key}, windowSeconds).Int64Slice()
-
 	if err != nil {
 		return false, 0, err
 	}
+	if len(values) != 2 {
+		return false, 0, errUnexpectedResult
+	}
+
+	count := values[0]
+	ttl := time.Duration(values[1]) * time.Millisecond
+
+	if count >= limit {
+		return true, ttl, nil
+	}
+
+	return false, ttl, nil
 }
 
 var errInvalidData = errors.New("invalid data")
