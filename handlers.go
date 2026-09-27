@@ -96,6 +96,40 @@ func (s *Server) getAllPostsHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("проищошла ошибка", err)
 	}
 }
+func (s *Server) deletePostHnadler(w http.ResponseWriter, r *http.Request) {
+
+	postIDString := r.PathValue("postID")
+	postID, err := strconv.ParseInt(postIDString, 10, 64)
+	if err != nil {
+		fmt.Println("произошла ошибка", err)
+		writeError(w, http.StatusBadRequest, "bad request", "bad request")
+		return
+	}
+	userID, ok := r.Context().Value(userIDKey).(int)
+	if !ok {
+		fmt.Println("произошла ошибка: ", ok)
+		if err := writeError(w, http.StatusBadRequest, "bad request", "bad request"); err != nil {
+			fmt.Println("произошла ошибка: ", err)
+		}
+		return
+	}
+	isComplete, err := s.posts.DeletePost(r.Context(), postID, int64(userID))
+	if err != nil {
+		fmt.Println("проищошла ошибка", err)
+		writeError(w, http.StatusInternalServerError, "interanl error", "interanl error")
+		return
+	}
+	if !isComplete {
+		fmt.Println("произошла ошибка: ", ok)
+		if err := writeError(w, http.StatusBadRequest, "bad request", "bad request"); err != nil {
+			fmt.Println("произошла ошибка: ", err)
+		}
+		return
+	}
+	if err := writeJSON(w, http.StatusNoContent, nil); err != nil {
+		fmt.Println("произошла ошибка", err)
+	}
+}
 
 func (s *Server) getUsersPostsHandler(w http.ResponseWriter, r *http.Request) {
 	userIDString := r.PathValue("userID")
@@ -260,10 +294,15 @@ func (s *Server) meHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	fmt.Println("user ID:", userID)
-	user := User{
-		ID: userID,
+
+	user, err := s.users.findByID(r.Context(), int64(userID))
+	if err != nil {
+		if err := writeError(w, http.StatusBadRequest, "bad request", "bad request"); err != nil {
+			fmt.Println("Произошла ошибка", err)
+		}
+		return
 	}
+
 	if err := writeJSON(w, http.StatusOK, user); err != nil {
 		fmt.Println("Ошибка:", err)
 	}
@@ -335,4 +374,44 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 		Secure:   false,
 	})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type ProfileResp struct {
+	ID    int64
+	Email string `json:"email"`
+	Name  string `json:"name"`
+}
+
+func (s *Server) patchProfileHandler(w http.ResponseWriter, r *http.Request) {
+
+	var user ProfileResp
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil ||
+		(user.Email == "" && user.Name == "") {
+		writeError(w, http.StatusBadRequest, "bad request", "bad request")
+		return
+	}
+	userID, ok := r.Context().Value(userIDKey).(int)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unoathorized", "Unoathorized")
+		return
+	}
+	user.ID = int64(userID)
+
+	isComplete, err := s.users.editUser(r.Context(), user)
+	if err != nil {
+		if err := writeError(w, http.StatusInternalServerError, "internal error", "internal error"); err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+	if !isComplete {
+		if err := writeError(w, http.StatusNotFound, "not found", "not found"); err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+	if err := writeJSON(w, http.StatusOK, nil); err != nil {
+		fmt.Println("Произошла ошибка", err)
+	}
+
 }

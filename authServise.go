@@ -19,6 +19,19 @@ import (
 
 var ErrSessionNotFound = errors.New("session not found")
 
+func NewAuthService(users *UserRepository,
+	sessions *SessionStore,
+	jwtConfig JWTConfig,
+	loginAttempts *RedisLoginAttemptLimiter,
+) *AuthService {
+	return &AuthService{
+		users:     users,
+		sessions:  sessions,
+		jwtConfig: jwtConfig,
+		//LoginAttempts: loginAttempts,
+	}
+}
+
 type SessionStore struct {
 	client *redis.Client
 }

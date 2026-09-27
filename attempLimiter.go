@@ -8,6 +8,28 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type LoginAttemptsLimiter interface {
+	IsBlocked(ctx context.Context, key string, limit int64) (bool, time.Duration, error)
+
+	RegisterFailure(ctx context.Context, key string, limit int64, window time.Duration) (bool, time.Duration, error)
+
+	Reset(ctx context.Context, key string) error
+}
+
+type RedisLoginAttemptLimiter struct {
+	client *redis.Client
+}
+
+func NewRedisLoginAttemptLimiter(client *redis.Client) *RedisLoginAttemptLimiter {
+	return &RedisLoginAttemptLimiter{
+		client: client,
+	}
+}
+
+func (r *RedisLoginAttemptLimiter) Reset(ctx context.Context, key string) error {
+	return r.client.Del(ctx, key).Err()
+}
+
 func (r *RedisLoginAttemptLimiter) IsBlocked(
 	ctx context.Context,
 	key string,

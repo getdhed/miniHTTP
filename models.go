@@ -1,14 +1,12 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 )
+
+var errInvalidData = errors.New("invalid data")
 
 type responseWriter struct {
 	http.ResponseWriter
@@ -31,27 +29,6 @@ type Server struct {
 	auth        *AuthService
 	RateLimiter RateLimiter
 	posts       PostRepository
-}
-
-type UserRepository struct {
-	db *pgxpool.Pool
-}
-
-type PGPostsRepository struct {
-	db *pgxpool.Pool
-}
-
-func NewPgPostRepository(db *pgxpool.Pool) *PGPostsRepository {
-	return &PGPostsRepository{
-		db: db,
-	}
-}
-
-type PostRepository interface {
-	FindByID(ctx context.Context, postID int64) (Post, error)
-	FindAll(ctx context.Context) ([]Post, error)
-	FindByUserID(ctx context.Context, userID int64) ([]Post, error)
-	CreatePost(ctx context.Context, post Post) error
 }
 
 type JWTConfig struct {
@@ -103,36 +80,6 @@ type Post struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type LoginAttemptsLimiter interface {
-	IsBlocked(ctx context.Context, key string, limit int64) (bool, time.Duration, error)
-
-	RegisterFailure(ctx context.Context, key string, limit int64, window time.Duration) (bool, time.Duration, error)
-
-	Reset(ctx context.Context, key string) error
-}
-type RedisLoginAttemptLimiter struct {
-	client *redis.Client
-}
-
-func NewRedisLoginAttemptLimiter(client *redis.Client) *RedisLoginAttemptLimiter {
-	return &RedisLoginAttemptLimiter{
-		client: client,
-	}
-}
-
-func NewAuthService(users *UserRepository,
-	sessions *SessionStore,
-	jwtConfig JWTConfig,
-	loginAttempts *RedisLoginAttemptLimiter,
-) *AuthService {
-	return &AuthService{
-		users:     users,
-		sessions:  sessions,
-		jwtConfig: jwtConfig,
-		//LoginAttempts: loginAttempts,
-	}
-}
-
 type LoginResult struct {
 	AccessToken  string
 	RefreshToken string
@@ -143,51 +90,6 @@ type RefreshResponse struct {
 	RefreshToken string
 	AccessToken  string
 }
-
-type RateLimiter interface {
-	Allow(ctx context.Context, key string, limit int64, window time.Duration) (bool, time.Duration, error)
-}
-type RedisRateLimiter struct {
-	client *redis.Client
-}
-
-func NewRedisRateLimiter(client *redis.Client) *RedisRateLimiter {
-	return &RedisRateLimiter{
-		client: client,
-	}
-}
-
-func (r *RedisLoginAttemptLimiter) Reset(ctx context.Context, key string) error {
-	return r.client.Del(ctx, key).Err()
-}
-
-var errInvalidData = errors.New("invalid data")
-
-// type UserStore struct {
-// 	users map[string]User
-// }
-
-// func NewUserStore() (*UserStore, error) {
-// 	us := UserStore{
-// 		users: make(map[string]User),
-// 	}
-// 	hash, err := bcrypt.GenerateFromPassword([]byte("qwerty123"), bcrypt.DefaultCost)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	testUser := User{
-// 		ID:           1,
-// 		Email:        "testmail",
-// 		PasswordHash: string(hash),
-// 	}
-// 	us.users["testmail"] = testUser
-// 	return &us, nil
-// }
-
-// func (us *UserStore) FindByEmail(email string) (User, bool) {
-// 	user, ok := us.users[email]
-// 	return user, ok
-// }
 
 func NewServer(addr string,
 	jwtSecret []byte,
@@ -218,11 +120,4 @@ func NewServer(addr string,
 	}
 
 	return s
-}
-
-func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
-	ur := UserRepository{
-		db: pool,
-	}
-	return &ur
 }
