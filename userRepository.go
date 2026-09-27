@@ -110,3 +110,19 @@ func (r *UserRepository) editUser(ctx context.Context, user ProfileResp) (bool, 
 	return tag.RowsAffected() == 1, nil
 
 }
+
+func (r *UserRepository) editPassword(
+	ctx context.Context,
+	passwordHash string,
+	userID int64,
+) (bool, error) {
+	tag, err := r.db.Exec(ctx, `
+	UPDATE users
+	SET password_hash=$1,updated_at = CURRENT_TIMESTAMP
+	WHERE id=$2
+	`, passwordHash, userID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}

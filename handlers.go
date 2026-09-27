@@ -415,3 +415,68 @@ func (s *Server) patchProfileHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
+
+type PasswordResp struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+}
+
+func (s *Server) patchPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	var passwordResp PasswordResp
+	if err := json.NewDecoder(r.Body).Decode(&passwordResp); err != nil {
+		writeError(w, http.StatusBadRequest, "bad request", "bad request")
+		return
+	}
+	if passwordResp.NewPassword == "" || passwordResp.OldPassword == "" {
+		writeError(w, http.StatusBadRequest, "bad request", "bad request")
+		return
+	}
+
+	userID, ok := r.Context().Value(userIDKey).(int)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unoathorized", "Unoathorized")
+		return
+	}
+
+	user, err := s.users.findByID(r.Context(), int64(userID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not found", "not found")
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword(
+		[]byte(user.PasswordHash),
+		[]byte(passwordResp.OldPassword),
+	); err != nil {
+		writeError(w, http.StatusBadRequest, "passwords arent the same", "passwords arent the same")
+		return
+	}
+	if passwordResp.NewPassword == passwordResp.OldPassword {
+		writeError(w, http.StatusBadRequest, "passwords are the same", "passwords are the same")
+		return
+	}
+
+	newPasswordHash, err := bcrypt.GenerateFromPassword(
+		[]byte(passwordResp.NewPassword),
+		bcrypt.DefaultCost)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error", "Internal Server Error")
+		return
+	}
+
+	isComplete, err := s.users.editPassword(
+		r.Context(),
+		string(newPasswordHash),
+		int64(userID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error", "Internal Server Error")
+		return
+	}
+	if !isComplete {
+		writeError(w, http.StatusNotFound, "not found", "not found")
+		return
+	}
+	if err := writeJSON(w, http.StatusOK, nil); err != nil {
+
+	}
+}

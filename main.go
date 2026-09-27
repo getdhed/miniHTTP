@@ -51,6 +51,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/auth/logout", s.logoutHandler)
 	s.mux.Handle("GET /me", s.authMiddleware(http.HandlerFunc(s.meHandler)))
 	s.mux.Handle("PATCH /me/", s.authMiddleware(http.HandlerFunc(s.patchProfileHandler)))
+	s.mux.Handle("PATCH /me/password", s.authMiddleware(http.HandlerFunc(s.patchPasswordHandler)))
 	// s.mux.Handle("GET /test", s.rateLimitMiddleware(http.HandlerFunc(s.testHandler)))
 	//s.mux.HandleFunc("POST /posts", s.getAllPostsHandler)
 
