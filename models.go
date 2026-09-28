@@ -31,6 +31,37 @@ type Server struct {
 	posts       PostRepository
 }
 
+func NewServer(addr string,
+	jwtSecret []byte,
+	users *UserRepository,
+	posts *PGPostsRepository,
+	authServise *AuthService,
+	rateLimiter *RedisRateLimiter,
+) *Server {
+	mux := http.NewServeMux()
+	TTL := time.Hour
+	jwtConfig := JWTConfig{
+		Secret: jwtSecret,
+		TTL:    TTL,
+	}
+
+	s := &Server{
+		mux:         mux,
+		jwtConfig:   jwtConfig,
+		users:       users,
+		posts:       posts,
+		auth:        authServise,
+		RateLimiter: rateLimiter,
+	}
+	s.httpServer = &http.Server{
+		Addr:              addr,
+		Handler:           logMiddleware(recoverMiddleware(mux)),
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+
+	return s
+}
+
 type JWTConfig struct {
 	Secret []byte
 	TTL    time.Duration
@@ -89,35 +120,4 @@ type LoginResult struct {
 type RefreshResponse struct {
 	RefreshToken string
 	AccessToken  string
-}
-
-func NewServer(addr string,
-	jwtSecret []byte,
-	users *UserRepository,
-	posts *PGPostsRepository,
-	authServise *AuthService,
-	rateLimiter *RedisRateLimiter,
-) *Server {
-	mux := http.NewServeMux()
-	TTL := time.Hour
-	jwtConfig := JWTConfig{
-		Secret: jwtSecret,
-		TTL:    TTL,
-	}
-
-	s := &Server{
-		mux:         mux,
-		jwtConfig:   jwtConfig,
-		users:       users,
-		posts:       posts,
-		auth:        authServise,
-		RateLimiter: rateLimiter,
-	}
-	s.httpServer = &http.Server{
-		Addr:              addr,
-		Handler:           logMiddleware(recoverMiddleware(mux)),
-		ReadHeaderTimeout: readHeaderTimeout,
-	}
-
-	return s
 }

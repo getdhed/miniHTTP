@@ -421,7 +421,7 @@ type PasswordResp struct {
 	NewPassword string `json:"new_password"`
 }
 
-func (s *Server) patchPasswordHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) changePasswordHandler(w http.ResponseWriter, r *http.Request) {
 	var passwordResp PasswordResp
 	if err := json.NewDecoder(r.Body).Decode(&passwordResp); err != nil {
 		writeError(w, http.StatusBadRequest, "bad request", "bad request")
@@ -476,6 +476,7 @@ func (s *Server) patchPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found", "not found")
 		return
 	}
+
 	if err := writeJSON(w, http.StatusOK, nil); err != nil {
 
 	}

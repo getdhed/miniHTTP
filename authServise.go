@@ -32,16 +32,6 @@ func NewAuthService(users *UserRepository,
 	}
 }
 
-type SessionStore struct {
-	client *redis.Client
-}
-
-func NewSessionStore(client *redis.Client) *SessionStore {
-	return &SessionStore{
-		client: client,
-	}
-}
-
 func generateRefreshToken() (string, error) {
 	bytes := make([]byte, 32)
 
@@ -56,15 +46,34 @@ func hashRefreshToken(token string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (s *SessionStore) Create(ctx context.Context, refreshHash string, session Session, ttl time.Duration) error {
+func userSessionsKey(userID int64) string {
+	return fmt.Sprintf("user_sessions:%d", userID)
+}
+
+func (s *SessionStore) Create(
+	ctx context.Context,
+	refreshHash string,
+	session Session,
+	ttl time.Duration) error {
+
 	key := sessionKey(refreshHash)
 	data, err := json.Marshal(session)
 	if err != nil {
 		return err
 	}
-	if err := s.client.Set(ctx, key, data, ttl).Err(); err != nil {
+	userKey := userSessionsKey(int64(session.UserID))
+	_, err = s.client.TxPipelined(
+		ctx,
+		func(p redis.Pipeliner) error {
+			p.Set(ctx, key, data, ttl)
+			p.SAdd(ctx, userKey, refreshHash)
+			return nil
+		},
+	)
+	if err != nil {
 		return err
 	}
+
 	return nil
 
 }
@@ -88,6 +97,9 @@ func (s *SessionStore) Rotate(ctx context.Context, oldRefreshHash string, newRef
 		redis.call("SET", newKey, newValue, "PX", ttl)
 		redis.call("DEL", oldKey)
 
+		redis.call("SREM",KEYS[3],ARGV[2])
+		redis.call("SADD",KEYS[3],ARGV[3])
+
 		return 1
 	`)
 	data, err := json.Marshal(session)
@@ -96,8 +108,15 @@ func (s *SessionStore) Rotate(ctx context.Context, oldRefreshHash string, newRef
 	}
 	oldKey := sessionKey(oldRefreshHash)
 	newKey := sessionKey(newRefreshHash)
+	userKey := userSessionsKey(int64(session.UserID))
 
-	result, err := rotateSessionScript.Run(ctx, s.client, []string{oldKey, newKey}, data).Int()
+	result, err := rotateSessionScript.Run(
+		ctx,
+		s.client,
+		[]string{oldKey, newKey, userKey},
+		string(data),
+		oldRefreshHash,
+		newRefreshHash).Int()
 	if err != nil {
 		return fmt.Errorf("rotate session script: %w", err)
 	}
@@ -130,14 +149,42 @@ func (s *SessionStore) Get(ctx context.Context, refreshHash string) (Session, er
 	}
 	return session, nil
 }
+func (s *SessionStore) DeleteByUserID(ctx context.Context, userID int64) error {
+	userKey := userSessionsKey(userID)
+	script := redis.NewScript(`
+		local hashes = redis.call("SMEMBERS", KEYS[1])
 
-func (s *SessionStore) Delete(ctx context.Context, refreshHash string) error {
-	key := sessionKey(refreshHash)
+		for _, hash in ipairs(hashes) do
+		local sessionHash="session:" .. hash
+			redis.call("DEL",sessionHash)
+		end
 
-	if err := s.client.Del(ctx, key).Err(); err != nil {
+		redis.call("DEL",KEYS[1])
+
+		return 1
+	`)
+	if err := script.Run(
+		ctx,
+		s.client,
+		[]string{userKey},
+	).Err(); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (s *SessionStore) Delete(ctx context.Context, refreshHash string, session Session) error {
+	hashKey := sessionKey(refreshHash)
+	userKey := userSessionsKey(int64(session.UserID))
+	_, err := s.client.TxPipelined(
+		ctx,
+		func(p redis.Pipeliner) error {
+			p.Del(ctx, hashKey)
+			p.SRem(ctx, userKey, refreshHash)
+			return nil
+		})
+
+	return err
 }
 
 func (a *AuthService) Login(ctx context.Context, email string, password string) (LoginResult, error) {
@@ -242,7 +289,11 @@ func (a *AuthService) refresh(ctx context.Context, oldRefreshToken string) (Refr
 
 func (a *AuthService) logout(ctx context.Context, refreshToken string) error {
 	hashRefresh := hashRefreshToken(refreshToken)
-	if err := a.sessions.Delete(ctx, hashRefresh); err != nil {
+	session, err := a.sessions.Get(ctx, hashRefresh)
+	if err != nil {
+		return err
+	}
+	if err := a.sessions.Delete(ctx, hashRefresh, session); err != nil {
 		return fmt.Errorf("err with deleting refresh hash %w", err)
 	}
 	return nil

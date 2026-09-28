@@ -6,6 +6,16 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type SessionStore struct {
+	client *redis.Client
+}
+
+func NewSessionStore(client *redis.Client) *SessionStore {
+	return &SessionStore{
+		client: client,
+	}
+}
+
 func connectRedis(ctx context.Context, addr string) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr: addr,
@@ -16,4 +26,8 @@ func connectRedis(ctx context.Context, addr string) (*redis.Client, error) {
 	}
 
 	return client, nil
+}
+
+func (s *SessionStore) DeleteAllByUserID(ctx context.Context, key string) {
+
 }
