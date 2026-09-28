@@ -477,7 +477,12 @@ func (s *Server) changePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := writeJSON(w, http.StatusOK, nil); err != nil {
+	if err := s.auth.sessions.DeleteByUserID(r.Context(), int64(userID)); err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal Server Error", "Internal Server Error")
+		return
+	}
 
+	if err := writeJSON(w, http.StatusOK, nil); err != nil {
+		fmt.Println("произошл ошибка:", err)
 	}
 }
