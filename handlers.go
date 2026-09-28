@@ -443,7 +443,6 @@ func (s *Server) changePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found", "not found")
 		return
 	}
-
 	if err := bcrypt.CompareHashAndPassword(
 		[]byte(user.PasswordHash),
 		[]byte(passwordResp.OldPassword),

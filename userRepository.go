@@ -61,7 +61,7 @@ func (r *UserRepository) AddUser(ctx context.Context, user User) (User, error) {
 
 func (r *UserRepository) findByID(ctx context.Context, userID int64) (User, error) {
 	row := r.db.QueryRow(ctx, `
-	SELECT id,name,email,created_at
+	SELECT id,name,email,password_hash
 	FROM users
 	WHERE id=$1
 	`, userID)
@@ -70,7 +70,7 @@ func (r *UserRepository) findByID(ctx context.Context, userID int64) (User, erro
 		&user.ID,
 		&user.Name,
 		&user.Email,
-		&user.CreatedAt); err != nil {
+		&user.PasswordHash); err != nil {
 		return User{}, err
 	}
 	return user, nil
