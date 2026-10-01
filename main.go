@@ -56,45 +56,22 @@ func (s *Server) routes() {
 }
 
 func main() {
-
+	ctx := context.Background()
 	cfg, err := LoadConfig()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("error:", err)
 	}
 
-	ctx := context.Background()
-
-	pool, err := connectDB(ctx, cfg.DatabaseURL)
+	app, err := buildApp(ctx, cfg)
 	if err != nil {
-		fmt.Println("База данных не подключена...")
-		return
+		log.Fatal("error:", err)
 	}
-	defer pool.Close()
+	defer app.Close()
 
-	redisClient, err := connectRedis(ctx, cfg.RedisAddr)
-	if err != nil {
-		fmt.Println("Redis connection failed:", err)
-		return
-	}
-	defer redisClient.Close()
-	jwtConfig := JWTConfig{
-		Secret: []byte(cfg.JWTSecret),
-		TTL:    3600,
-	}
-	sessions := NewSessionStore(redisClient)
-
-	userRepo := NewUserRepository(pool)
-
-	rateLimiter := NewRedisRateLimiter(redisClient)
-	LAL := NewRedisLoginAttemptLimiter(redisClient)
-	authServise := NewAuthService(userRepo, sessions, jwtConfig, LAL)
-	PGPostRepo := NewPgPostRepository(pool)
-	server := NewServer(":3030", []byte(cfg.JWTSecret), userRepo, PGPostRepo, authServise, rateLimiter)
-	server.routes()
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 	go func() {
-		if err := server.Start(); err != nil {
+		if err := app.server.Start(); err != nil {
 			if errors.Is(err, http.ErrServerClosed) {
 				fmt.Println("Сервер закрылся!")
 			} else {
@@ -108,7 +85,7 @@ func main() {
 	fmt.Println("Ctrl+C received")
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := server.Shutdown(timeoutCtx); err != nil {
+	if err := app.server.Shutdown(timeoutCtx); err != nil {
 		fmt.Println(err)
 	}
 }

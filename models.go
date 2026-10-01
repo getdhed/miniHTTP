@@ -1,12 +1,71 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 var errInvalidData = errors.New("invalid data")
+
+type App struct {
+	server      *Server
+	db          *pgxpool.Pool
+	redisClient *redis.Client
+}
+
+func buildApp(ctx context.Context, cfg Config) (*App, error) {
+	pool, err := connectDB(ctx, cfg.DatabaseURL)
+	if err != nil {
+		fmt.Println("DB connection failed:", err)
+		pool.Close()
+		return nil, err
+	}
+
+	redisClient, err := connectRedis(ctx, cfg.RedisAddr)
+	if err != nil {
+		fmt.Println("Redis connection failed:", err)
+		return nil, err
+	}
+	jwtConfig := JWTConfig{
+		Secret: []byte(cfg.JWTSecret),
+		TTL:    3600,
+	}
+	sessions := NewSessionStore(redisClient)
+
+	userRepo := NewUserRepository(pool)
+
+	rateLimiter := NewRedisRateLimiter(redisClient)
+	LAL := NewRedisLoginAttemptLimiter(redisClient)
+	authServise := NewAuthService(userRepo, sessions, jwtConfig, LAL)
+	PGPostRepo := NewPgPostRepository(pool)
+	server := NewServer(
+		":3030",
+		[]byte(cfg.JWTSecret),
+		userRepo,
+		PGPostRepo,
+		authServise,
+		rateLimiter)
+
+	server.routes()
+
+	return &App{
+		server:      server,
+		db:          pool,
+		redisClient: redisClient,
+	}, nil
+
+}
+
+func (a *App) Close() {
+	a.db.Close()
+	a.redisClient.Close()
+}
 
 type responseWriter struct {
 	http.ResponseWriter
@@ -60,6 +119,9 @@ func NewServer(addr string,
 	}
 
 	return s
+}
+func (s *Server) Handler() http.Handler {
+	return s.mux
 }
 
 type JWTConfig struct {
