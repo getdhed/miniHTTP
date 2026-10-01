@@ -9,8 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"time"
-
-	"github.com/joho/godotenv"
 )
 
 type contextKey string
@@ -58,39 +56,29 @@ func (s *Server) routes() {
 }
 
 func main() {
-	if err := godotenv.Load(); err != nil {
-		log.Println(".env not found, using environment variables")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		log.Fatal(err)
 	}
-	jwtSecret, ok := os.LookupEnv("JWT_SECRET")
-	if !ok || jwtSecret == "" {
-		log.Println("JWT_SECRET is not set")
-	}
-	databaseUrl, ok := os.LookupEnv("DATABASE_URL")
-	if !ok || databaseUrl == "" {
-		log.Println("DATABASE_URL is not set")
-	}
+
 	ctx := context.Background()
 
-	pool, err := connectDB(ctx, databaseUrl)
+	pool, err := connectDB(ctx, cfg.DatabaseURL)
 	if err != nil {
 		fmt.Println("База данных не подключена...")
 		return
 	}
 	defer pool.Close()
 
-	redisAddr, ok := os.LookupEnv("REDIS_ADDR")
-	if !ok || redisAddr == "" {
-		fmt.Println("редис не подключен...")
-		return
-	}
-	redisClient, err := connectRedis(ctx, redisAddr)
+	redisClient, err := connectRedis(ctx, cfg.RedisAddr)
 	if err != nil {
 		fmt.Println("Redis connection failed:", err)
 		return
 	}
 	defer redisClient.Close()
 	jwtConfig := JWTConfig{
-		Secret: []byte(jwtSecret),
+		Secret: []byte(cfg.JWTSecret),
 		TTL:    3600,
 	}
 	sessions := NewSessionStore(redisClient)
@@ -101,7 +89,7 @@ func main() {
 	LAL := NewRedisLoginAttemptLimiter(redisClient)
 	authServise := NewAuthService(userRepo, sessions, jwtConfig, LAL)
 	PGPostRepo := NewPgPostRepository(pool)
-	server := NewServer(":3030", []byte(jwtSecret), userRepo, PGPostRepo, authServise, rateLimiter)
+	server := NewServer(":3030", []byte(cfg.JWTSecret), userRepo, PGPostRepo, authServise, rateLimiter)
 	server.routes()
 	shutdownCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
